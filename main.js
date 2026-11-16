@@ -310,10 +310,10 @@ function pauseGameAudio() {
 }
 
 /* =========================================================
-   BACKROOMS — mode secret (1 chance sur 50 au lancement, ou en
+   BACKROOMS — mode secret (1 chance sur 10 au lancement, ou en
    martelant "avancer" 4 fois dans un coin en L)
    ========================================================= */
-const BACKROOMS_CHANCE = 1 / 50;
+const BACKROOMS_CHANCE = 1 / 10;
 const CORNER_PRESSES_NEEDED = 4;
 const CORNER_PRESS_WINDOW = 1.5; // secondes pour enchaîner les 4 appuis
 
