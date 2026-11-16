@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Labyrinthe des fantômes</title>
+<link rel="icon" href="assets/branding/pacman-icon.png" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="crosshair">+</div>
+
+  <div id="overlay">
+    <img id="logo" src="assets/branding/pacmanlogo.png" alt="logo" />
+    <p>ZQSD / WASD pour avancer &mdash; Souris pour regarder</p>
+
+    <div id="difficulty-selector">
+      <button class="difficulty-btn" data-difficulty="easy">Facile</button>
+      <button class="difficulty-btn" data-difficulty="medium">Moyen</button>
+      <button class="difficulty-btn" data-difficulty="hard">AHHHHHH</button>
+    </div>
+
+    <p>Clique pour commencer</p>
+  </div>
+
+  <div id="hint">Clic gauche : tirer &mdash; Clic droit : grenade</div>
+
+  <div id="gun">🔫</div>
+
+  <div id="health-bar">
+    <div id="health-fill"></div>
+  </div>
+
+  <div id="jumpscare" class="hidden">
+    <img id="jumpscare-img" alt="" />
+  </div>
+
+  <div id="death-overlay" class="hidden">
+    <h1>💀 Tu es mort</h1>
+    <button id="restart-btn">Rejouer</button>
+  </div>
+
+  <div id="victory-overlay" class="hidden">
+    <h1>🏆 Tu as gagné !</h1>
+    <p>Tous les fantômes sont morts, même ceux de la dernière vague.</p>
+    <button id="victory-restart-btn">Rejouer</button>
+  </div>
+
+  <div id="dialog-box" class="hidden">
+    <p id="dialog-text"></p>
+    <p id="dialog-hint">Appuie sur Entrée pour continuer</p>
+  </div>
+
+  <audio id="bgm" src="assets/branding/pacman-remix.mp3" loop></audio>
+
+  <!-- Three.js chargé via CDN, en modules ES -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

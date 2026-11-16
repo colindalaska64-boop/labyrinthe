@@ -1,0 +1,90 @@
+{
+  "maxGhosts": 4,
+  "playerSpeed": 7.5,
+  "ghosts": [
+    {
+      "id": "707567da-07c1-4902-82ba-b90feb704a8b",
+      "image": "phpUtdtxb_1-modifie-modifie-1.png",
+      "name": "ze",
+      "behavior": "chase",
+      "speed": 6,
+      "scale": 2,
+      "detectRadius": 5,
+      "damage": 210,
+      "sounds": [
+        "macron-explosion.mp3",
+        "macron_projet_final.mp3"
+      ]
+    },
+    {
+      "id": "796ff401-bf13-4ee5-8d68-162bbb325dba",
+      "image": "zemour-modifie.png",
+      "name": "",
+      "sounds": [
+        "Eric_Zemmour_-_La_France_nest_pas_un_Mcdonalds__Meme_-decoupe.wav",
+        "zemmour-tousse.mp3"
+      ],
+      "behavior": "chase",
+      "speed": 4,
+      "scale": 2.5,
+      "detectRadius": 8,
+      "damage": 160
+    },
+    {
+      "id": "d108e537-34e1-4177-8e8a-a217afa53f13",
+      "image": "charlie-modifie.png",
+      "name": "",
+      "sounds": [
+        "we-are-charlie-kirk-loud-as-fuuu.mp3"
+      ],
+      "behavior": "erratic",
+      "speed": 5,
+      "scale": 2.6,
+      "detectRadius": 8,
+      "damage": 200,
+      "volume": 0.15
+    },
+    {
+      "id": "48f4a437-d23b-4878-a006-1c988fbd3546",
+      "image": "coucou-modifie.png",
+      "name": "",
+      "sounds": [
+        "MissJirachi_Coucou-decoupe.wav"
+      ],
+      "behavior": "sentinel",
+      "speed": 6.5,
+      "scale": 2,
+      "detectRadius": 13,
+      "damage": 10000,
+      "volume": 1
+    },
+    {
+      "id": "c89828f7-5117-45bf-86ac-04f2db648a6b",
+      "image": "ASTERIONS.jpg",
+      "name": "",
+      "sounds": [
+        "hallway-ambiance-extended-five-nights-at-freddys-2-music.mp3"
+      ],
+      "behavior": "teleporter",
+      "speed": 5.9,
+      "scale": 3.4,
+      "detectRadius": 10,
+      "damage": 100,
+      "volume": 1
+    },
+    {
+      "id": "983ccb65-8c78-43d1-acda-760b42e0a9b5",
+      "image": "NYAN.jpg",
+      "name": "NYAN AT",
+      "sounds": [
+        "nyan-cat_1.mp3"
+      ],
+      "behavior": "chase",
+      "speed": 8.1,
+      "scale": 2,
+      "detectRadius": 29,
+      "damage": 30,
+      "volume": 1
+    }
+  ]
+}
