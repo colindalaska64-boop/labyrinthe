@@ -84,7 +84,8 @@
       "scale": 2,
       "detectRadius": 29,
       "damage": 30,
-      "volume": 1
+      "volume": 1,
+      "hp": 100
     }
   ]
 }

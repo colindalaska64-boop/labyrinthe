@@ -1157,7 +1157,7 @@ function playRandomGhostSound(ghost) {
   ghost.audio.play().catch(() => {});
 }
 
-function spawnGhost({ image, sounds, sound, behavior, speed, scale, detectRadius, damage, volume, cell }) {
+function spawnGhost({ image, sounds, sound, behavior, speed, scale, detectRadius, damage, volume, hp, cell }) {
   const { x, z } = cellToWorld(cell.row, cell.col);
 
   const texture = textureLoader.load(`assets/ghosts/${image}`, undefined, undefined, () => {
@@ -1193,7 +1193,7 @@ function spawnGhost({ image, sounds, sound, behavior, speed, scale, detectRadius
     detectRadius: (detectRadius || DETECT_RADIUS) * difficulty.detectMult,
     damage: (damage || DAMAGE_PER_SECOND) * difficulty.damageMult,
     scale: s,
-    hp: GHOST_MAX_HP,
+    hp: hp || GHOST_MAX_HP, // vie réglable par fantôme dans config.json ("hp"), sinon 300
     volume: volume ?? 1,
     soundPool,
     audio: null,
