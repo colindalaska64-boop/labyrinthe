@@ -415,6 +415,11 @@ const logo = document.getElementById("logo");
 const LOGO_FREEZE_MS = 3000; // reste statique le temps que la page s'installe
 const logoStartTime = performance.now();
 let logoX = 50, logoY = 50, logoVX = 140, logoVY = 95, logoAngle = 0, logoScale = 1, logoScaleDir = 1, logoHue = 0;
+// Après 7 s sur l'écran d'accueil, le logo tourne de plus en plus vite, sans limite.
+const LOGO_SPIN_SPEED = 400;      // degrés par seconde au départ
+const LOGO_SPIN_START = 7;        // secondes d'écran d'accueil avant d'accélérer
+const LOGO_SPIN_ACCEL = 200;      // degrés/s gagnés chaque seconde ensuite
+let logoMenuTime = LOGO_FREEZE_MS / 1000; // temps passé sur l'écran d'accueil
 let lastLogoTime = performance.now();
 function animateLogo(now) {
   requestAnimationFrame(animateLogo);
@@ -447,7 +452,9 @@ function animateLogo(now) {
     logoVY = (Math.random() - 0.5) * 600;
   }
 
-  logoAngle += 400 * dt;
+  logoMenuTime += dt;
+  const spinSpeed = LOGO_SPIN_SPEED + LOGO_SPIN_ACCEL * Math.max(0, logoMenuTime - LOGO_SPIN_START);
+  logoAngle = (logoAngle + spinSpeed * dt) % 360;
   logoScale += logoScaleDir * 0.6 * dt;
   if (logoScale > 4 || logoScale < 0.6) logoScaleDir *= -1;
   logoHue = (logoHue + 260 * dt) % 360;
