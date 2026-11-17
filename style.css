@@ -39,6 +39,28 @@ canvas { display: block; }
 
 #overlay.hidden { display: none; }
 
+#splash {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-18deg);
+  white-space: nowrap;
+}
+#splash span {
+  display: inline-block;
+  font: bold 22px/1 "Courier New", monospace;
+  color: #ffff3c;
+  text-shadow: 2px 2px 0 #3f3f00;
+  animation: splash-pulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes splash-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #splash span { animation: none; }
+}
+
 #logo {
   position: absolute;
   width: 260px;

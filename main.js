@@ -383,6 +383,8 @@ function enterBackrooms() {
   health = Math.min(health + 50, maxHealth);
   updateHealthBar();
 
+  while (healOrbs.length < BACKROOMS_HEAL_ORBS) addHealOrb();
+
   bgm.src = "assets/branding/undertale-megalovania.mp3";
   bgm.currentTime = 0;
   bgm.volume = 0.75;
@@ -423,6 +425,7 @@ function animateLogo(now) {
     logo.style.top = "20%";
     logo.style.transform = "translate(-50%, -50%)";
     lastLogoTime = now;
+    placeSplash();
     return;
   }
 
@@ -456,6 +459,17 @@ function animateLogo(now) {
   logo.style.top = `${logoY}px`;
   logo.style.transform = `rotate(${logoAngle}deg) scale(${logoScale}) skew(${skew}deg) scaleX(${flip})`;
   logo.style.filter = `hue-rotate(${logoHue}deg) saturate(3)`;
+  placeSplash();
+}
+
+// Texte jaune « Fait par alaska64 » qui suit le coin du logo.
+const splash = document.getElementById("splash");
+function placeSplash() {
+  const r = logo.getBoundingClientRect();
+  const x = Math.max(70, Math.min(window.innerWidth - 70, r.right - r.width * 0.1));
+  const y = Math.max(20, Math.min(window.innerHeight - 20, r.bottom - r.height * 0.15));
+  splash.style.left = `${x}px`;
+  splash.style.top = `${y}px`;
 }
 requestAnimationFrame(animateLogo);
 
@@ -1538,6 +1552,7 @@ document.getElementById("restart-btn").addEventListener("click", () => location.
    plus tard. Vie déjà pleine : ça donne de la vie bonus (barre bleue).
    ========================================================= */
 const HEAL_ORB_COUNT = 1;          // une seule boule dans tout le labyrinthe
+const BACKROOMS_HEAL_ORBS = 4;     // dans les backrooms, il y en a 4 en tout
 const HEAL_AMOUNT = 25;            // vie rendue par boule
 const HEAL_ORB_RESPAWN = 45;       // secondes avant qu'elle réapparaisse ailleurs
 const HEAL_PICKUP_RADIUS = 1.2;    // distance pour la ramasser
@@ -1576,7 +1591,7 @@ function placeHealOrb(orb) {
   orb.respawnIn = 0;
 }
 
-for (let i = 0; i < HEAL_ORB_COUNT; i++) {
+function addHealOrb() {
   const group = new THREE.Group();
   group.add(new THREE.Mesh(healOrbGeometry, healOrbMaterial));
   const glow = new THREE.Sprite(
@@ -1589,6 +1604,8 @@ for (let i = 0; i < HEAL_ORB_COUNT; i++) {
   healOrbs.push(orb);
   placeHealOrb(orb);
 }
+
+for (let i = 0; i < HEAL_ORB_COUNT; i++) addHealOrb();
 
 function updateHealOrbs(delta) {
   const t = performance.now() / 1000;
