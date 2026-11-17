@@ -283,8 +283,10 @@ controls.addEventListener("lock", async () => {
   if (!gameStarted) {
     gameStarted = true;
     await loadGhosts();
-    // Tiré une seule fois, au lancement (pas à chaque reprise après une pause).
-    if (Math.random() < BACKROOMS_CHANCE) enterBackrooms();
+    // Tiré une seule fois, au lancement (pas à chaque reprise après une pause),
+    // et jamais à la toute première partie sur ce navigateur.
+    const firstGame = countGameAndCheckFirst();
+    if (!firstGame && Math.random() < BACKROOMS_CHANCE) enterBackrooms();
   }
 
   bgm.volume = inBackrooms ? 0.75 : 0.25;
@@ -311,10 +313,25 @@ function pauseGameAudio() {
 }
 
 /* =========================================================
-   BACKROOMS — mode secret (1 chance sur 10 au lancement, ou en
+   BACKROOMS — mode secret (1 chance sur 3 au lancement sauf à la
+   toute première partie, ou en
    martelant "avancer" 4 fois dans un coin en L)
    ========================================================= */
-const BACKROOMS_CHANCE = 1 / 10;
+const BACKROOMS_CHANCE = 1 / 3;
+const GAMES_PLAYED_KEY = "pacman3d-parties-jouees";
+
+// Compte les parties lancées sur ce navigateur (gardé entre deux "Rejouer").
+// Renvoie true pour la toute première. Si le navigateur refuse de stocker
+// (navigation privée...), on fait comme si ce n'était pas la première.
+function countGameAndCheckFirst() {
+  try {
+    const played = parseInt(localStorage.getItem(GAMES_PLAYED_KEY) || "0", 10) || 0;
+    localStorage.setItem(GAMES_PLAYED_KEY, String(played + 1));
+    return played === 0;
+  } catch {
+    return false;
+  }
+}
 const CORNER_PRESSES_NEEDED = 4;
 const CORNER_PRESS_WINDOW = 1.5; // secondes pour enchaîner les 4 appuis
 
@@ -1502,6 +1519,89 @@ function triggerVictory() {
 }
 
 document.getElementById("restart-btn").addEventListener("click", () => location.reload());
+
+/* =========================================================
+   BOULES VERTES — rendent un peu de vie quand on passe dessus.
+   Elles flottent dans les couloirs et réapparaissent ailleurs un peu
+   plus tard. On ne les ramasse pas si la vie est déjà pleine.
+   ========================================================= */
+const HEAL_ORB_COUNT = 6;          // nombre de boules dans le labyrinthe
+const HEAL_AMOUNT = 25;            // vie rendue par boule
+const HEAL_ORB_RESPAWN = 20;       // secondes avant qu'une boule ramassée réapparaisse
+const HEAL_PICKUP_RADIUS = 1.2;    // distance pour la ramasser
+const HEAL_ORB_HEIGHT = 0.9;
+
+const healOrbGeometry = new THREE.SphereGeometry(0.22, 16, 12);
+const healOrbMaterial = new THREE.MeshBasicMaterial({ color: 0x3dff6e });
+
+// Halo vert autour de la boule (dégradé dessiné dans un petit canvas).
+const healGlowTexture = (() => {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, "rgba(120, 255, 150, 0.9)");
+  g.addColorStop(0.4, "rgba(60, 255, 110, 0.35)");
+  g.addColorStop(1, "rgba(60, 255, 110, 0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+
+const healOrbs = [];
+
+function placeHealOrb(orb) {
+  const taken = healOrbs.filter((o) => o !== orb && o.group.visible).map((o) => o.cell);
+  let cell;
+  for (let i = 0; i < 30; i++) {
+    cell = pickRandomOpenCell({ row: 1, col: 1 });
+    if (!taken.some((t) => sameCell(t, cell))) break;
+  }
+  orb.cell = cell;
+  const { x, z } = cellToWorld(cell.row, cell.col);
+  orb.group.position.set(x, HEAL_ORB_HEIGHT, z);
+  orb.group.visible = true;
+  orb.respawnIn = 0;
+}
+
+for (let i = 0; i < HEAL_ORB_COUNT; i++) {
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(healOrbGeometry, healOrbMaterial));
+  const glow = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: healGlowTexture, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  glow.scale.set(1.3, 1.3, 1);
+  group.add(glow);
+  scene.add(group);
+  const orb = { group, cell: null, respawnIn: 0, phase: Math.random() * Math.PI * 2 };
+  healOrbs.push(orb);
+  placeHealOrb(orb);
+}
+
+const healthBarEl = document.getElementById("health-bar");
+
+function updateHealOrbs(delta) {
+  const t = performance.now() / 1000;
+  for (const orb of healOrbs) {
+    if (!orb.group.visible) {
+      orb.respawnIn -= delta;
+      if (orb.respawnIn <= 0) placeHealOrb(orb);
+      continue;
+    }
+
+    orb.group.position.y = HEAL_ORB_HEIGHT + Math.sin(t * 3 + orb.phase) * 0.12; // flotte
+
+    const dist = Math.hypot(orb.group.position.x - playerPos.x, orb.group.position.z - playerPos.z);
+    if (dist < HEAL_PICKUP_RADIUS && health < maxHealth) {
+      health = Math.min(maxHealth, health + HEAL_AMOUNT);
+      updateHealthBar();
+      orb.group.visible = false;
+      orb.respawnIn = HEAL_ORB_RESPAWN;
+      healthBarEl.classList.add("heal");
+      setTimeout(() => healthBarEl.classList.remove("heal"), 400);
+    }
+  }
+}
 document.getElementById("victory-restart-btn").addEventListener("click", () => location.reload());
 
 /* =========================================================
@@ -1559,6 +1659,7 @@ function animate() {
     updateExplosionVideos();
     updateScreenShake(delta);
     updateStarPowerup(delta);
+    updateHealOrbs(delta);
 
     if (cornerPressCount > 0) {
       cornerPressTimer -= delta;

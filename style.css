@@ -114,6 +114,11 @@ canvas { display: block; }
   overflow: hidden;
 }
 
+#health-bar.heal {
+  border-color: #3dff6e;
+  box-shadow: 0 0 14px #3dff6e;
+}
+
 #health-fill {
   height: 100%;
   width: 100%;
