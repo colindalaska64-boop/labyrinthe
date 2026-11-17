@@ -288,6 +288,7 @@ controls.addEventListener("lock", async () => {
   }
 
   bgm.volume = inBackrooms ? 0.75 : 0.25;
+  if (inBackrooms) boostBgm(BACKROOMS_MUSIC_BOOST);
   bgm.play().catch(() => {});
   for (const ghost of ghosts) {
     if (ghost.starred && ghost.starAudio) ghost.starAudio.play().catch(() => {});
@@ -331,6 +332,24 @@ function isCornerCell(row, col) {
   return (up || down) && (left || right); // coin en L, pas un couloir droit
 }
 
+// Musique des backrooms 50 % plus forte. Le volume d'un <audio> ne peut pas
+// dépasser 1 : on passe donc la musique par un amplificateur (Web Audio).
+const BACKROOMS_MUSIC_BOOST = 1.5;
+let bgmGain = null;
+function boostBgm(gain) {
+  try {
+    const ctx = getExplosionAudioCtx();
+    if (!bgmGain) {
+      bgmGain = ctx.createGain();
+      ctx.createMediaElementSource(bgm).connect(bgmGain).connect(ctx.destination);
+    }
+    bgmGain.gain.value = gain;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+  } catch (e) {
+    console.warn("Amplification de la musique impossible :", e);
+  }
+}
+
 function enterBackrooms() {
   if (inBackrooms) return;
   inBackrooms = true;
@@ -350,6 +369,7 @@ function enterBackrooms() {
   bgm.src = "assets/branding/undertale-megalovania.mp3";
   bgm.currentTime = 0;
   bgm.volume = 0.75;
+  boostBgm(BACKROOMS_MUSIC_BOOST);
   bgm.play().catch(() => {});
 }
 
