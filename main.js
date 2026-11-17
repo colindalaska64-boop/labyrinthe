@@ -436,6 +436,7 @@ function animateLogo(now) {
 
   const dt = Math.min((now - lastLogoTime) / 1000, 0.1);
   lastLogoTime = now;
+  if (logoPhase === "gone") return;
 
   const w = logo.offsetWidth * logoScale;
   const h = logo.offsetHeight * logoScale;
@@ -466,7 +467,109 @@ function animateLogo(now) {
   logo.style.top = `${logoY}px`;
   logo.style.transform = `rotate(${logoAngle}deg) scale(${logoScale}) skew(${skew}deg) scaleX(${flip})`;
   logo.style.filter = `hue-rotate(${logoHue}deg) saturate(3)`;
-  placeSplash();
+  updateLogoFinale(dt);
+  if (logoPhase !== "gone") placeSplash();
+}
+
+/* ---------- Fin du logo ----------
+   Après 10 s à tourner de plus en plus vite, il se met à trembler, une
+   grenade est lancée dessus depuis l'arme, et il explose (même vidéo et
+   même son que la grenade du jeu). */
+const LOGO_SHAKE_AT = LOGO_SPIN_START + 10; // secondes d'accueil avant de trembler
+const LOGO_SHAKE_DURATION = 2;              // tremble 2 s avant le lancer
+const LOGO_THROW_DURATION = 0.7;            // durée du vol de la grenade
+const LOGO_SHAKE_PX = 12;
+let logoPhase = "spin"; // spin -> shake -> throw -> gone
+let logoThrow = null;
+
+function logoCenter() {
+  const r = logo.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+function updateLogoFinale(dt) {
+  if (logoPhase === "spin" && logoMenuTime >= LOGO_SHAKE_AT) logoPhase = "shake";
+  if (logoPhase === "spin" || logoPhase === "gone") return;
+
+  // Tremblement : petit décalage au hasard à chaque image.
+  const sx = (Math.random() * 2 - 1) * LOGO_SHAKE_PX;
+  const sy = (Math.random() * 2 - 1) * LOGO_SHAKE_PX;
+  logo.style.left = `${logoX + sx}px`;
+  logo.style.top = `${logoY + sy}px`;
+
+  if (logoPhase === "shake" && logoMenuTime >= LOGO_SHAKE_AT + LOGO_SHAKE_DURATION) startLogoThrow();
+  if (logoPhase === "throw") updateLogoThrow(dt);
+}
+
+function startLogoThrow() {
+  logoPhase = "throw";
+  const canvas = document.createElement("canvas");
+  canvas.className = "logo-grenade";
+  canvas.width = canvas.height = 64;
+  if (grenadeTexture) canvas.getContext("2d").drawImage(grenadeTexture.image, 0, 0, 64, 64);
+  overlay.appendChild(canvas);
+  logoThrow = { canvas, t: 0, fromX: window.innerWidth - 90, fromY: window.innerHeight - 70 };
+}
+
+function updateLogoThrow(dt) {
+  const g = logoThrow;
+  g.t += dt;
+  const p = Math.min(1, g.t / LOGO_THROW_DURATION);
+  const target = logoCenter(); // suit le logo qui bouge encore
+  const x = g.fromX + (target.x - g.fromX) * p;
+  const y = g.fromY + (target.y - g.fromY) * p - Math.sin(Math.PI * p) * 160; // en cloche
+  g.canvas.style.left = `${x}px`;
+  g.canvas.style.top = `${y}px`;
+  g.canvas.style.transform = `translate(-50%, -50%) rotate(${g.t * 900}deg)`;
+  if (p >= 1) {
+    g.canvas.remove();
+    explodeLogo(target);
+  }
+}
+
+function explodeLogo(center) {
+  logoPhase = "gone";
+  logo.style.visibility = "hidden";
+  splash.style.visibility = "hidden";
+
+  const video = document.createElement("video");
+  video.src = "assets/arme/grenade/explosion.mp4";
+  video.playsInline = true;
+  // Sans clic sur la page, le navigateur refuse le son : on la joue alors en muet.
+  video.play().catch(() => {
+    video.muted = true;
+    video.play().catch(() => {});
+  });
+
+  // Fond vert de la vidéo rendu transparent, image par image.
+  const canvas = document.createElement("canvas");
+  canvas.className = "logo-boom";
+  const size = Math.min(520, window.innerWidth * 0.9);
+  canvas.width = canvas.height = 260; // calcul en petit, affiché en grand
+  canvas.style.width = canvas.style.height = `${size}px`;
+  canvas.style.left = `${center.x}px`;
+  canvas.style.top = `${center.y}px`;
+  overlay.appendChild(canvas);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+  function drawFrame() {
+    if (video.ended || !canvas.isConnected) {
+      canvas.remove();
+      return;
+    }
+    if (video.readyState >= 2) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const px = img.data;
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i + 1] - Math.max(px[i], px[i + 2]) > 38) px[i + 3] = 0;
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+    requestAnimationFrame(drawFrame);
+  }
+  requestAnimationFrame(drawFrame);
+  video.addEventListener("ended", () => canvas.remove());
 }
 
 // Texte jaune « Fait par alaska64 » qui suit le coin du logo.

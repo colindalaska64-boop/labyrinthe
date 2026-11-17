@@ -61,6 +61,15 @@ canvas { display: block; }
   #splash span { animation: none; }
 }
 
+.logo-grenade,
+.logo-boom {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+.logo-grenade { width: 48px; height: 48px; }
+.logo-boom { transform: translate(-50%, -50%); }
+
 #logo {
   position: absolute;
   width: 260px;
