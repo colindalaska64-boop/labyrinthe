@@ -1472,6 +1472,10 @@ window.addEventListener("keydown", (e) => {
    ========================================================= */
 let health = MAX_HEALTH;
 let maxHealth = MAX_HEALTH;
+// Vie bonus (barre bleue au-dessus) : gagnée en prenant une boule verte
+// quand la vie est déjà pleine. Les dégâts l'enlèvent en premier.
+const MAX_BONUS_HEALTH = 50;
+let bonusHealth = 0;
 let gameOver = false;
 
 const healthFill = document.getElementById("health-fill");
@@ -1481,12 +1485,20 @@ const jumpscareImg = document.getElementById("jumpscare-img");
 const screamerSound = new Audio("assets/branding/screamer.mp3");
 const JUMPSCARE_DURATION = 1200; // ms avant de basculer sur l'écran "Tu es mort"
 
+const bonusBar = document.getElementById("bonus-bar");
+const bonusFill = document.getElementById("bonus-fill");
+
 function updateHealthBar() {
   healthFill.style.width = `${(health / maxHealth) * 100}%`;
+  bonusFill.style.width = `${(bonusHealth / MAX_BONUS_HEALTH) * 100}%`;
+  bonusBar.classList.toggle("hidden", bonusHealth <= 0);
 }
 
 function takeDamage(amount, killerGhost) {
   if (gameOver) return;
+  const absorbed = Math.min(bonusHealth, amount);
+  bonusHealth -= absorbed;
+  amount -= absorbed;
   health = Math.max(0, health - amount);
   updateHealthBar();
   if (health <= 0) triggerGameOver(killerGhost);
@@ -1523,11 +1535,11 @@ document.getElementById("restart-btn").addEventListener("click", () => location.
 /* =========================================================
    BOULES VERTES — rendent un peu de vie quand on passe dessus.
    Elles flottent dans les couloirs et réapparaissent ailleurs un peu
-   plus tard. On ne les ramasse pas si la vie est déjà pleine.
+   plus tard. Vie déjà pleine : ça donne de la vie bonus (barre bleue).
    ========================================================= */
-const HEAL_ORB_COUNT = 6;          // nombre de boules dans le labyrinthe
+const HEAL_ORB_COUNT = 1;          // une seule boule dans tout le labyrinthe
 const HEAL_AMOUNT = 25;            // vie rendue par boule
-const HEAL_ORB_RESPAWN = 20;       // secondes avant qu'une boule ramassée réapparaisse
+const HEAL_ORB_RESPAWN = 45;       // secondes avant qu'elle réapparaisse ailleurs
 const HEAL_PICKUP_RADIUS = 1.2;    // distance pour la ramasser
 const HEAL_ORB_HEIGHT = 0.9;
 
@@ -1578,8 +1590,6 @@ for (let i = 0; i < HEAL_ORB_COUNT; i++) {
   placeHealOrb(orb);
 }
 
-const healthBarEl = document.getElementById("health-bar");
-
 function updateHealOrbs(delta) {
   const t = performance.now() / 1000;
   for (const orb of healOrbs) {
@@ -1592,13 +1602,13 @@ function updateHealOrbs(delta) {
     orb.group.position.y = HEAL_ORB_HEIGHT + Math.sin(t * 3 + orb.phase) * 0.12; // flotte
 
     const dist = Math.hypot(orb.group.position.x - playerPos.x, orb.group.position.z - playerPos.z);
-    if (dist < HEAL_PICKUP_RADIUS && health < maxHealth) {
-      health = Math.min(maxHealth, health + HEAL_AMOUNT);
+    if (dist < HEAL_PICKUP_RADIUS && (health < maxHealth || bonusHealth < MAX_BONUS_HEALTH)) {
+      const toHealth = Math.min(HEAL_AMOUNT, maxHealth - health);
+      health += toHealth;
+      bonusHealth = Math.min(MAX_BONUS_HEALTH, bonusHealth + HEAL_AMOUNT - toHealth);
       updateHealthBar();
       orb.group.visible = false;
       orb.respawnIn = HEAL_ORB_RESPAWN;
-      healthBarEl.classList.add("heal");
-      setTimeout(() => healthBarEl.classList.remove("heal"), 400);
     }
   }
 }

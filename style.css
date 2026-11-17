@@ -108,15 +108,29 @@ canvas { display: block; }
   width: 220px;
   height: 20px;
   border: 2px solid #fff;
-  border-radius: 4px;
   background: rgba(0, 0, 0, 0.5);
   z-index: 5;
   overflow: hidden;
 }
 
-#health-bar.heal {
-  border-color: #3dff6e;
-  box-shadow: 0 0 14px #3dff6e;
+#bonus-bar {
+  position: fixed;
+  bottom: 43px;
+  left: 15px;
+  width: 220px;
+  height: 8px;
+  border: 2px solid #fff;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 5;
+  overflow: hidden;
+}
+#bonus-bar.hidden { display: none; }
+
+#bonus-fill {
+  height: 100%;
+  width: 0;
+  background: #2f7de0;
+  transition: width 0.15s linear;
 }
 
 #health-fill {
