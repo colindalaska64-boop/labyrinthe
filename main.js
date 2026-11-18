@@ -1276,7 +1276,7 @@ function pickTargetCell(ghost, options) {
   if (ghost.lateralBias === undefined || Math.random() < 0.3) {
     ghost.lateralBias = Math.random() * 2 - 1;
   }
-  const maxOffset = Math.max(0, CELL / 2 - ghost.scale / 2 - 0.1);
+  const maxOffset = Math.max(0, CELL / 2 - ghost.scale * 0.35 - 0.1);
   const lateral = ghost.lateralBias * maxOffset;
   if (next.row === prevCell.row) target.z += lateral; // déplacement horizontal -> décalage en Z
   else target.x += lateral; // déplacement vertical -> décalage en X
@@ -1293,12 +1293,71 @@ function moveToward(ghost, delta) {
   const dz = ghost.target.z - pos.z;
   const dist = Math.hypot(dx, dz);
 
-  if (dist < 0.15) return true;
+  if (dist < 0.3) return true;
 
-  const step = Math.min(ghost.speed * worldSpeedMultiplier * delta, dist);
-  pos.x += (dx / dist) * step;
-  pos.z += (dz / dist) * step;
+  const dirX = dx / dist;
+  const dirZ = dz / dist;
+
+  // Le fantôme tourne progressivement au lieu de pivoter d'un coup : il
+  // prend ses virages en courbe. Demi-tour ou presque arrivé : pas de courbe.
+  if (!ghost.heading) ghost.heading = { x: dirX, z: dirZ };
+  const h = ghost.heading;
+  if (h.x * dirX + h.z * dirZ < 0 || dist < 1) {
+    h.x = dirX;
+    h.z = dirZ;
+  } else {
+    const k = Math.min(1, GHOST_TURN_RATE * delta);
+    h.x += (dirX - h.x) * k;
+    h.z += (dirZ - h.z) * k;
+    const len = Math.hypot(h.x, h.z) || 1;
+    h.x /= len;
+    h.z /= len;
+  }
+
+  // Petites accélérations et ralentissements, propres à chaque fantôme.
+  const t = performance.now() / 1000;
+  const surge = 1 + GHOST_SURGE * Math.sin(t * (ghost.surgeFreq || 0.8) + (ghost.phase || 0) * 2.3);
+
+  const step = Math.min(ghost.speed * surge * worldSpeedMultiplier * delta, dist);
+  const nx = pos.x + h.x * step;
+  const nz = pos.z + h.z * step;
+  if (isWallCell(Math.round(nz / CELL), Math.round(nx / CELL))) {
+    // La courbe mordrait dans un mur : on va tout droit cette fois.
+    pos.x += dirX * step;
+    pos.z += dirZ * step;
+  } else {
+    pos.x = nx;
+    pos.z = nz;
+  }
   return false;
+}
+
+/* Mouvement "vivant" ajouté par-dessus le trajet : le fantôme ondule
+   de gauche à droite dans le couloir et flotte de haut en bas. Retiré
+   avant que le comportement le déplace, remis juste après, pour ne pas
+   fausser le trajet. */
+const GHOST_TURN_RATE = 8;   // vitesse à laquelle il tourne dans les virages
+const GHOST_SURGE = 0.18;    // +/- 18 % de vitesse, en vagues
+const GHOST_BOB = 0.18;      // hauteur du flottement
+
+function removeGhostFlourish(ghost) {
+  if (ghost.flourish) ghost.sprite.position.sub(ghost.flourish);
+}
+
+function applyGhostFlourish(ghost) {
+  if (!ghost.flourish) ghost.flourish = new THREE.Vector3();
+  const t = performance.now() / 1000;
+  const phase = ghost.phase || 0;
+  const h = ghost.heading || { x: 1, z: 0 };
+  const sway = Math.sin(t * (ghost.swayFreq || 1.5) + phase) * (ghost.swayAmp || 0.3);
+  ghost.flourish.set(-h.z * sway, Math.sin(t * (ghost.bobFreq || 1.8) + phase * 1.7) * GHOST_BOB, h.x * sway);
+
+  const p = ghost.sprite.position;
+  if (isWallCell(Math.round((p.z + ghost.flourish.z) / CELL), Math.round((p.x + ghost.flourish.x) / CELL))) {
+    ghost.flourish.x = 0;
+    ghost.flourish.z = 0;
+  }
+  p.add(ghost.flourish);
 }
 
 const ghosts = [];
@@ -1359,6 +1418,12 @@ function spawnGhost({ image, sounds, sound, behavior, speed, scale, detectRadius
     soundPool,
     audio: null,
     isNear: false,
+    heading: null,
+    phase: Math.random() * Math.PI * 2,
+    swayFreq: 1 + Math.random() * 1.6,
+    swayAmp: Math.min(0.25 + Math.random() * 0.45, Math.max(0.1, CELL / 2 - s * 0.35 - 0.1)),
+    bobFreq: 1.2 + Math.random() * 1.2,
+    surgeFreq: 0.5 + Math.random() * 0.9,
   };
 
   if (soundPool.length > 0) {
@@ -1449,7 +1514,9 @@ function updateGhosts(delta) {
       ghost.starred || ghost.starPending
         ? ghostBehaviors.chase
         : ghostBehaviors[ghost.behavior] || ghostBehaviors.chase;
+    removeGhostFlourish(ghost);
     behavior(ghost, delta);
+    applyGhostFlourish(ghost);
 
     const dist = ghost.sprite.position.distanceTo(camera.position);
     const isNear =
@@ -1543,6 +1610,7 @@ function reallyActivateStar(ghost) {
   ghost.target = null;
   const { x, z } = cellToWorld(cell.row, cell.col);
   ghost.sprite.position.set(x, GHOST_HEIGHT, z);
+  if (ghost.flourish) ghost.flourish.set(0, 0, 0);
 
   ghost.starAudio = new Audio("assets/arme/star-sound.mp4");
   ghost.starAudio.loop = true; // le son ne dure que 7s, mais l'effet 20 : on le boucle
