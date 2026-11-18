@@ -256,7 +256,7 @@ document.getElementById("admin-link")?.addEventListener("click", (e) => e.stopPr
 // l'étoile (sinon elle n'apparaît jamais).
 const DIFFICULTIES = {
   easy: { label: "Facile", speedMult: 0.7, damageMult: 0.6, detectMult: 0.8, allowStar: false },
-  medium: { label: "Moyen", speedMult: 1, damageMult: 1, detectMult: 1, allowStar: false },
+  medium: { label: "Moyen", speedMult: 1, damageMult: 1, detectMult: 1, allowStar: true },
   hard: { label: "AHHHHHH", speedMult: 1.5, damageMult: 1.6, detectMult: 1.3, allowStar: true },
 };
 let selectedDifficulty = "medium";
@@ -295,6 +295,7 @@ controls.addEventListener("lock", async () => {
   for (const ghost of ghosts) {
     if (ghost.starred && ghost.starAudio) ghost.starAudio.play().catch(() => {});
   }
+  if (playerStarTime > 0) playerStarAudio.play().catch(() => {});
 });
 controls.addEventListener("unlock", () => {
   // Une fois la partie finie, c'est l'écran de mort/victoire qui s'affiche, pas le menu.
@@ -310,6 +311,7 @@ function pauseGameAudio() {
     if (ghost.audio) ghost.audio.pause();
     if (ghost.starAudio) ghost.starAudio.pause();
   }
+  playerStarAudio.pause();
 }
 
 /* =========================================================
@@ -659,7 +661,7 @@ function updatePlayer(delta) {
 
   const len = Math.hypot(dx, dz);
   if (len > 0) {
-    const step = PLAYER_SPEED * worldSpeedMultiplier * delta;
+    const step = PLAYER_SPEED * (playerStarTime > 0 ? PLAYER_STAR_SPEED : 1) * worldSpeedMultiplier * delta;
     dx = (dx / len) * step;
     dz = (dz / len) * step;
 
@@ -786,6 +788,7 @@ function flashGhostRed(ghost) {
 }
 
 function damageGhost(ghost, amount) {
+  if (playerStarTime > 0) amount = ghost.hp; // étoile : un seul coup suffit
   ghost.hp -= amount;
   flashGhostRed(ghost);
   if (ghost.hp <= 0) killGhost(ghost);
@@ -1080,6 +1083,18 @@ function shuffle(array) {
 // ajoute simplement une fonction ici (et une entrée dans la liste
 // BEHAVIORS de admin.js pour pouvoir le sélectionner dans l'interface).
 const ghostBehaviors = {
+  // Utilisé pendant que le joueur a l'étoile : le fantôme s'éloigne de
+  // lui le plus possible, case par case.
+  scared(ghost, delta) {
+    const arrived = !ghost.target || moveToward(ghost, delta);
+    if (!arrived) return;
+    const playerCell = worldToCell(camera.position.x, camera.position.z);
+    const options = neighborsOf(ghost.cell.row, ghost.cell.col);
+    if (options.length === 0) return;
+    options.sort((a, b) => cellDist(b, playerCell) - cellDist(a, playerCell));
+    pickTargetCell(ghost, [options[0]]);
+  },
+
   // Poursuit le joueur en suivant le vrai plus court chemin dans le
   // labyrinthe (recalculé à chaque case atteinte, puisque le joueur bouge).
   // Le comportement le plus simple et le plus redoutable à distance.
@@ -1594,10 +1609,13 @@ async function loadSounds() {
 }
 
 function updateGhosts(delta) {
+  const eaten = [];
   for (const ghost of ghosts) {
-    // Étoilé : poursuite plein-map forcée, quel que soit son comportement normal.
-    const behavior =
-      ghost.starred || ghost.starPending
+    // Joueur avec l'étoile : tout le monde fuit. Fantôme étoilé : poursuite
+    // plein-map forcée, quel que soit son comportement normal.
+    const behavior = playerStarTime > 0
+      ? ghostBehaviors.scared
+      : ghost.starred || ghost.starPending
         ? ghostBehaviors.chase
         : ghostBehaviors[ghost.behavior] || ghostBehaviors.chase;
     removeGhostFlourish(ghost);
@@ -1616,9 +1634,11 @@ function updateGhosts(delta) {
     ghost.isNear = isNear;
 
     if (dist < ghostContactRadius(ghost)) {
-      takeDamage(ghost.damage * delta, ghost);
+      if (playerStarTime > 0) eaten.push(ghost); // étoile : on le tue en le touchant
+      else takeDamage(ghost.damage * delta, ghost);
     }
   }
+  for (const ghost of eaten) killGhost(ghost);
 
   if (ghosts.length > 0) hadGhosts = true;
   if (finalWaveStarted && ghosts.length === 0) {
@@ -1705,7 +1725,7 @@ function updateStarPowerup(delta) {
   starTimer += delta;
   if (starTimer >= STAR_INTERVAL) {
     starTimer = 0;
-    // L'étoile n'existe qu'en difficulté "AHHHHHH" (Ctrl+E reste dispo pour tester quand même).
+    // L'étoile existe en "Moyen" et "AHHHHHH", pas en "Facile" (Ctrl+E reste dispo pour tester).
     if (ghosts.length > 0 && DIFFICULTIES[selectedDifficulty].allowStar) {
       activateStar(ghosts[Math.floor(Math.random() * ghosts.length)]);
     }
@@ -1884,6 +1904,107 @@ function updateHealOrbs(delta) {
     }
   }
 }
+/* =========================================================
+   ÉTOILE À RAMASSER — une seule, cachée quelque part dans le labyrinthe.
+   Prise : on va plus vite, les fantômes ont peur et fuient, et on les
+   tue en un coup (en les touchant, ou avec une balle / grenade). Une
+   barre jaune montre le temps restant. Elle revient ailleurs plus tard.
+   ========================================================= */
+const PLAYER_STAR_DURATION = 10;   // secondes d'effet
+const PLAYER_STAR_SPEED = 1.6;     // vitesse du joueur x1,6
+const PLAYER_STAR_RESPAWN = 60;    // secondes (après la fin de l'effet) avant qu'elle revienne
+const PLAYER_STAR_PICKUP_RADIUS = 1.2;
+const PLAYER_STAR_HEIGHT = 0.9;
+const PLAYER_STAR_BLINK = 3;       // les fantômes clignotent les 3 dernières secondes
+
+let playerStarTime = 0;
+let starPickupRespawn = 0;
+const starBar = document.getElementById("star-bar");
+const starFill = document.getElementById("star-fill");
+const playerStarAudio = new Audio("assets/arme/star-sound.mp4");
+playerStarAudio.loop = true;
+playerStarAudio.volume = 0.7;
+
+const starPickup = new THREE.Group();
+const starPickupSprite = new THREE.Sprite(
+  new THREE.SpriteMaterial({ map: textureLoader.load("assets/branding/etoile.png"), transparent: true, depthWrite: false })
+);
+starPickupSprite.scale.set(0.75, 0.75, 1);
+const starGlowTexture = (() => {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, "rgba(255, 240, 80, 0.8)");
+  g.addColorStop(0.4, "rgba(255, 220, 40, 0.3)");
+  g.addColorStop(1, "rgba(255, 220, 40, 0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const starPickupGlow = new THREE.Sprite(
+  new THREE.SpriteMaterial({ map: starGlowTexture, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+);
+starPickupGlow.scale.set(1.6, 1.6, 1);
+starPickup.add(starPickupGlow, starPickupSprite);
+scene.add(starPickup);
+
+function placeStarPickup() {
+  const playerCell = worldToCell(playerPos.x, playerPos.z);
+  const taken = healOrbs.filter((o) => o.group.visible).map((o) => o.cell);
+  let cell;
+  for (let i = 0; i < 40; i++) {
+    cell = pickRandomOpenCell(playerCell);
+    if (cellDist(cell, playerCell) >= 5 && !taken.some((t) => sameCell(t, cell))) break;
+  }
+  const { x, z } = cellToWorld(cell.row, cell.col);
+  starPickup.position.set(x, PLAYER_STAR_HEIGHT, z);
+  starPickup.visible = true;
+}
+placeStarPickup();
+
+function startPlayerStar() {
+  playerStarTime = PLAYER_STAR_DURATION;
+  starPickupRespawn = PLAYER_STAR_RESPAWN;
+  starBar.classList.remove("hidden");
+  playerStarAudio.currentTime = 0;
+  playerStarAudio.play().catch(() => {});
+}
+
+function endPlayerStar() {
+  playerStarTime = 0;
+  starBar.classList.add("hidden");
+  playerStarAudio.pause();
+  for (const ghost of ghosts) {
+    if (!ghost.starred) ghost.sprite.material.color.setHex(0xffffff);
+  }
+}
+
+function updatePlayerStar(delta) {
+  const t = performance.now() / 1000;
+  if (starPickup.visible) {
+    starPickup.position.y = PLAYER_STAR_HEIGHT + Math.sin(t * 3) * 0.12; // flotte
+    starPickupSprite.material.rotation = Math.sin(t * 2.5) * 0.35;   // se balance
+    const dist = Math.hypot(starPickup.position.x - playerPos.x, starPickup.position.z - playerPos.z);
+    if (dist < PLAYER_STAR_PICKUP_RADIUS) {
+      starPickup.visible = false;
+      startPlayerStar();
+    }
+  } else if (playerStarTime <= 0) {
+    starPickupRespawn -= delta;
+    if (starPickupRespawn <= 0) placeStarPickup();
+  }
+
+  if (playerStarTime > 0) {
+    playerStarTime -= delta;
+    starFill.style.width = `${(Math.max(0, playerStarTime) / PLAYER_STAR_DURATION) * 100}%`;
+    // Fantômes apeurés en bleu, qui clignotent en blanc juste avant la fin.
+    const blink = playerStarTime < PLAYER_STAR_BLINK && Math.floor(t * 6) % 2 === 0;
+    for (const ghost of ghosts) ghost.sprite.material.color.setHex(blink ? 0xffffff : 0x4060ff);
+    if (playerStarTime <= 0) endPlayerStar();
+  }
+}
+
 document.getElementById("victory-restart-btn").addEventListener("click", () => location.reload());
 
 /* =========================================================
@@ -1942,6 +2063,7 @@ function animate() {
     updateScreenShake(delta);
     updateStarPowerup(delta);
     updateHealOrbs(delta);
+    updatePlayerStar(delta);
 
     if (cornerPressCount > 0) {
       cornerPressTimer -= delta;
