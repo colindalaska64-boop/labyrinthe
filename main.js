@@ -1377,6 +1377,92 @@ function playRandomGhostSound(ghost) {
   ghost.audio.play().catch(() => {});
 }
 
+/* ---------- Son des fantômes selon la distance ----------
+   On l'entend de loin, tout bas, puis de plus en plus fort en approchant.
+   Le volume glisse en douceur (pas de son qui démarre d'un coup), le son
+   est étouffé derrière les murs et vient de la gauche ou de la droite
+   selon où se trouve le fantôme. */
+const GHOST_HEAR_FACTOR = 1.6;  // entendu jusqu'à 1,6 x sa distance de repérage
+const GHOST_FADE_RATE = 2.5;    // vitesse du fondu (plus haut = plus rapide)
+const GHOST_WALL_MUFFLE = 0.45; // volume gardé quand un mur est entre nous
+const GHOST_MUFFLED_HZ = 650;   // son "étouffé" derrière un mur
+const _ghostForward = new THREE.Vector3();
+
+function ghostAudioGraph(ghost) {
+  if (ghost.audioGraph !== undefined) return ghost.audioGraph;
+  ghost.audioGraph = null; // si le Web Audio échoue : simple volume
+  try {
+    const ctx = getExplosionAudioCtx();
+    const source = ctx.createMediaElementSource(ghost.audio);
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 20000;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    source.connect(filter).connect(gain);
+    let panner = null;
+    if (ctx.createStereoPanner) {
+      panner = ctx.createStereoPanner();
+      gain.connect(panner).connect(ctx.destination);
+    } else {
+      gain.connect(ctx.destination);
+    }
+    ghost.audioGraph = { ctx, filter, gain, panner };
+  } catch (e) {
+    ghost.audioGraph = null;
+  }
+  return ghost.audioGraph;
+}
+
+function updateGhostSound(ghost, dist, delta) {
+  const audio = ghost.audio;
+  const pos = ghost.sprite.position;
+  const hearRadius = ghost.detectRadius * GHOST_HEAR_FACTOR;
+  const sees = hasLineOfSight(camera.position.x, camera.position.z, pos.x, pos.z);
+
+  // Volume visé : 0 au bord de la zone d'écoute, son volume réglé tout contre nous.
+  let target = 0;
+  if (dist < hearRadius) {
+    const k = 1 - dist / hearRadius;
+    target = ghost.volume * k * k * (3 - 2 * k);
+    if (!sees) target *= GHOST_WALL_MUFFLE;
+  }
+  ghost.soundTarget = target;
+
+  // Fondu : le volume rejoint la cible petit à petit.
+  const ease = Math.min(1, GHOST_FADE_RATE * delta);
+  ghost.soundLevel = (ghost.soundLevel || 0) + (target - (ghost.soundLevel || 0)) * ease;
+  ghost.muffle = (ghost.muffle ?? 0) + ((sees ? 0 : 1) - (ghost.muffle ?? 0)) * ease;
+
+  if (target > 0 && audio.paused) {
+    // Reprend le son là où il s'était arrêté, ou en tire un au hasard.
+    if (audio.src && !audio.ended) audio.play().catch(() => {});
+    else playRandomGhostSound(ghost);
+  } else if (target === 0 && ghost.soundLevel < 0.003 && !audio.paused) {
+    audio.pause();
+  }
+
+  const graph = ghostAudioGraph(ghost);
+  if (graph) {
+    if (graph.ctx.state === "suspended") graph.ctx.resume().catch(() => {});
+    audio.volume = 1;
+    graph.gain.gain.value = ghost.soundLevel;
+    graph.filter.frequency.value = GHOST_MUFFLED_HZ * Math.pow(20000 / GHOST_MUFFLED_HZ, 1 - ghost.muffle);
+    if (graph.panner) {
+      // Gauche / droite par rapport à là où on regarde.
+      camera.getWorldDirection(_ghostForward);
+      const dx = pos.x - camera.position.x;
+      const dz = pos.z - camera.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const flen = Math.hypot(_ghostForward.x, _ghostForward.z) || 1;
+      const side = (dx * -_ghostForward.z + dz * _ghostForward.x) / (len * flen);
+      graph.panner.pan.value = Math.max(-0.8, Math.min(0.8, side * 0.8));
+    }
+  } else {
+    audio.volume = Math.max(0, Math.min(1, ghost.soundLevel));
+  }
+}
+
 function spawnGhost({ image, sounds, sound, behavior, speed, scale, detectRadius, damage, volume, hp, cell }) {
   const { x, z } = cellToWorld(cell.row, cell.col);
 
@@ -1431,7 +1517,7 @@ function spawnGhost({ image, sounds, sound, behavior, speed, scale, detectRadius
     // Pas de `loop` : quand un son se termine, on en relance un autre tiré
     // au hasard tant que le fantôme est toujours proche (voir updateGhosts).
     ghost.audio.addEventListener("ended", () => {
-      if (ghost.isNear) playRandomGhostSound(ghost);
+      if (ghost.soundTarget > 0) playRandomGhostSound(ghost);
     });
   }
 
@@ -1526,16 +1612,7 @@ function updateGhosts(delta) {
     // Recalculé chaque frame à partir de l'état réel de la lecture
     // (plutôt que d'un simple "front montant") pour être sûr que le son
     // s'arrête bien dès qu'on s'éloigne, même en cas de frame ratée.
-    if (ghost.audio) {
-      if (isNear) {
-        if (ghost.audio.paused) playRandomGhostSound(ghost);
-        // plus fort quand le fantôme est tout proche, borné par son volume réglé dans l'éditeur
-        const proximity = Math.max(0.25, Math.min(1, 1 - dist / ghost.detectRadius));
-        ghost.audio.volume = proximity * ghost.volume;
-      } else if (!ghost.audio.paused) {
-        ghost.audio.pause();
-      }
-    }
+    if (ghost.audio) updateGhostSound(ghost, dist, delta);
     ghost.isNear = isNear;
 
     if (dist < ghostContactRadius(ghost)) {
